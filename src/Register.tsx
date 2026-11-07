@@ -1,28 +1,10 @@
 import { useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ChangeEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { fromLegacy, newId, store, TYPES, type EType, type Entry } from './store';
-
-const CURRENCY = '₹';
-const DEFAULT_CATS: Record<EType, string[]> = {
-  income: ['Salary', 'Business', 'Freelance', 'Rent received', 'Interest & dividends', 'Other income'],
-  expense: ['Food & groceries', 'Rent', 'Shopping', 'Fees', 'Medical', 'Debt / EMI', 'Bills & utilities', 'Transport', 'Other expense'],
-  investment: ['Savings deposit', 'SIP / mutual fund', 'Fixed deposit', 'PPF / EPF', 'Shares', 'Gold', 'Other investment'],
-};
-const DEFAULT_PEOPLE = ['USHA', 'Venkat', 'Mithu'];
-const TYPE_LABEL: Record<EType, string> = { income: 'Income', expense: 'Expense', investment: 'Investment' };
-
-const pad = (n: number) => String(n).padStart(2, '0');
-const todayISO = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
-const curMonth = () => todayISO().slice(0, 7);
-const monthName = (ym: string) => new Date(ym + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+import { ACC, CURRENCY, DEFAULT_CATS, DEFAULT_PEOPLE, NEG, Page, TYPE_LABEL, btn, cell, curMonth, fieldCol, figure, flow, h2, input, kicker, label, money, monthName, num, rule, sub, subR, sumOf, td, tdR, th, thR, todayISO } from './shared';
 
 type Form = { type: EType; amount: string; date: string; cat: string; desc: string; newCat: string; person: string; newPerson: string };
 const blankForm = (type: EType = 'expense', person = ''): Form => ({ type, amount: '', date: todayISO(), cat: '', desc: '', newCat: '', person, newPerson: '' });
 
-const num = (n: number) => Math.round(n).toLocaleString('en-IN');
-const money = (n: number) => (n < 0 ? '−' : '') + CURRENCY + num(Math.abs(n));
-const cell = (n: number) => (n < 0 ? '−' : '') + num(Math.abs(n));
-const sumOf = (arr: Entry[]) => arr.reduce((a, e) => a + (+e.amount || 0), 0);
-const flow = (e: Entry) => (e.type === 'income' ? +e.amount : -+e.amount);
 
 function download(name: string, blob: Blob) {
   const a = document.createElement('a');
@@ -30,25 +12,7 @@ function download(name: string, blob: Blob) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// — shared inline styles (as in the design) —
-const NEG = 'var(--color-accent-2-700)';
-const ACC = 'var(--color-accent-700)';
-const kicker: CSSProperties = { fontSize: 13, letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 600 };
-const figure: CSSProperties = { fontFamily: 'var(--font-heading)', fontSize: 'clamp(24px,6.5vw,34px)', fontWeight: 700 };
-const h2: CSSProperties = { margin: 0, fontFamily: 'var(--font-heading)', fontSize: 24, fontWeight: 600 };
-const fieldCol: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', minWidth: 0 };
-const label: CSSProperties = { fontSize: 14 };
-const input: CSSProperties = { fontSize: 16, minHeight: 44, width: '100%', boxSizing: 'border-box' };
-const th: CSSProperties = { padding: '8px 4px', fontSize: 14 };
-const thR: CSSProperties = { ...th, textAlign: 'right' };
-const td: CSSProperties = { padding: '8px 4px' };
-const tdR: CSSProperties = { ...td, textAlign: 'right' };
-const rule: CSSProperties = { borderTop: '2px solid var(--color-text)' };
-const sub: CSSProperties = { padding: '6px 4px 6px var(--space-4)' };
-const subR: CSSProperties = { padding: '6px 4px', textAlign: 'right' };
-const btn: CSSProperties = { minHeight: 44 };
-
-export function Register({ footer, shared = false }: { footer: ReactNode; shared?: boolean }) {
+export function Register({ footer, nav, shared = false }: { footer: ReactNode; nav?: ReactNode; shared?: boolean }) {
   const snap = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [month, setMonth] = useState(curMonth());
   const [form, setForm] = useState<Form>(blankForm());
@@ -145,7 +109,7 @@ export function Register({ footer, shared = false }: { footer: ReactNode; shared
     });
   };
   const clearAll = () => {
-    if (confirm('Delete every entry and custom category' + (shared ? ' from the shared register, on every phone' : '') + '? Download a backup first if you may need them.')) { store.replaceAll({ entries: {}, items: {} }); setSel(null); setEditId(null); setForm(blankForm()); }
+    if (confirm('Delete every entry, loan, commitment and custom category' + (shared ? ' from the shared register, on every phone' : '') + '? Download a backup first if you may need them.')) { store.replaceAll({ entries: {}, items: {}, records: {} }); setSel(null); setEditId(null); setForm(blankForm()); }
   };
 
   const personLabel = type === 'income' ? 'Received by' : type === 'investment' ? 'Invested by' : 'Expense incurred by';
@@ -153,8 +117,8 @@ export function Register({ footer, shared = false }: { footer: ReactNode; shared
   const typeHint = type === 'investment' ? 'Investments sit in the Expense column of the register, but are counted at the top as money saved.' : type === 'income' ? 'Income goes in the Income column and raises the balance.' : 'Expenses go in the Expense column and reduce the balance.';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#ffffff', color: 'var(--color-text)', fontFamily: 'var(--font-body)', fontSize: 16, lineHeight: 1.45 }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: 'calc(var(--space-4) + env(safe-area-inset-top)) min(var(--space-6),4vw) 80px', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+    <Page>
+        {nav}
 
         <header style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 'var(--space-3)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -323,7 +287,6 @@ export function Register({ footer, shared = false }: { footer: ReactNode; shared
           </div>
           {footer}
         </footer>
-      </div>
-    </div>
+    </Page>
   );
 }

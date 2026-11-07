@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { Register } from './Register';
+import { Statements } from './Statements';
 import { supabase, useSync, type SyncStatus } from './sync';
 
 /** User IDs map to internal Supabase accounts; no email is ever sent to these addresses. */
@@ -14,11 +15,33 @@ const STATUS_TEXT: Record<SyncStatus, string> = {
   error: 'Sync problem — retrying',
 };
 
+type View = 'register' | 'statements';
+const VIEW_KEY = 'wealthwise_view';
+
+function Nav({ view, setView }: { view: View; setView: (v: View) => void }) {
+  return (
+    <nav className="seg" aria-label="Sections" style={{ display: 'flex', maxWidth: 420 }}>
+      {([['register', 'Register'], ['statements', 'Statements']] as const).map(([v, t]) => (
+        <label key={v} className="seg-opt" style={{ flex: '1 1 0', justifyContent: 'center', minHeight: 44, fontSize: 15 }}>
+          <input type="radio" name="view" checked={view === v} onChange={() => { setView(v); window.scrollTo({ top: 0 }); }} />{t}
+        </label>
+      ))}
+    </nav>
+  );
+}
+
+function Screens({ footer, shared }: { footer: ReactNode; shared: boolean }) {
+  const [view, setViewState] = useState<View>(() => { try { return localStorage.getItem(VIEW_KEY) === 'statements' ? 'statements' : 'register'; } catch { return 'register'; } });
+  const setView = (v: View) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* ignore */ } };
+  const nav = <Nav view={view} setView={setView} />;
+  return view === 'statements' ? <Statements nav={nav} footer={footer} /> : <Register nav={nav} footer={footer} shared={shared} />;
+}
+
 export function App() {
   const { access, status, error, email, signOut } = useSync();
 
   if (access === 'local') {
-    return <Register footer={<span style={{ fontSize: 14 }}>Your entries are saved in this browser on this device.</span>} />;
+    return <Screens shared={false} footer={<span style={{ fontSize: 14 }}>Your entries are saved in this browser on this device.</span>} />;
   }
   if (access === 'loading') return <Sheet><p>Opening your register…</p></Sheet>;
   if (access === 'signed-out') return <SignIn />;
@@ -34,7 +57,7 @@ export function App() {
   }
 
   return (
-    <Register
+    <Screens
       shared
       footer={
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center', fontSize: 14 }}>

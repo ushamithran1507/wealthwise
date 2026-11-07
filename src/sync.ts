@@ -1,6 +1,6 @@
 import { createClient, type RealtimeChannel, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
-import { store, type CustomItem, type Entry, type EType, type Outbox } from './store';
+import { store, type CustomItem, type Entry, type EType, type Outbox, type StoredRecord, type RecordKind } from './store';
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -18,6 +18,9 @@ const toEntry = (r: EntryRow): Entry => ({ id: r.id, type: r.type, amount: +r.am
 const fromEntry = (e: Entry) => ({ id: e.id, type: e.type, amount: e.amount, date: e.date, cat: e.cat, person: e.person, description: e.desc, created: e.created, updated_at: e.updatedAt, deleted: !!e.deleted });
 const toItem = (r: ItemRow): CustomItem => ({ id: r.id, kind: r.kind, type: r.type, name: r.name, updatedAt: +r.updated_at, deleted: r.deleted });
 const fromItem = (i: CustomItem) => ({ id: i.id, kind: i.kind, type: i.type, name: i.name, updated_at: i.updatedAt, deleted: !!i.deleted });
+type RecordRow = { id: string; kind: RecordKind; data: StoredRecord['data']; updated_at: number | string; deleted: boolean };
+const toRecord = (r: RecordRow): StoredRecord => ({ id: r.id, kind: r.kind, data: r.data, updatedAt: +r.updated_at, deleted: r.deleted });
+const fromRecord = (r: StoredRecord) => ({ id: r.id, kind: r.kind, data: r.data, updated_at: r.updatedAt, deleted: !!r.deleted });
 
 export type SyncStatus = 'syncing' | 'synced' | 'offline' | 'error';
 
@@ -47,11 +50,15 @@ function startEngine(sb: SupabaseClient, setStatus: (s: SyncStatus) => void, set
       do {
         again = false;
         const batch: Outbox = store.pending();
-        const entries = Object.values(batch.entries), items = Object.values(batch.items);
-        if (!entries.length && !items.length) break;
+        const entries = Object.values(batch.entries), items = Object.values(batch.items), records = Object.values(batch.records);
+        if (!entries.length && !items.length && !records.length) break;
         setStatus('syncing');
         for (let i = 0; i < items.length; i += 500) {
           const { error } = await sb.from('custom_items').upsert(items.slice(i, i + 500).map(fromItem));
+          if (error) throw error;
+        }
+        for (let i = 0; i < records.length; i += 500) {
+          const { error } = await sb.from('records').upsert(records.slice(i, i + 500).map(fromRecord));
           if (error) throw error;
         }
         for (let i = 0; i < entries.length; i += 500) {
@@ -71,8 +78,8 @@ function startEngine(sb: SupabaseClient, setStatus: (s: SyncStatus) => void, set
     if (stopped || !navigator.onLine) { report(); return; }
     try {
       setStatus('syncing');
-      const [entries, items] = await Promise.all([pullAll<EntryRow>(sb, 'entries'), pullAll<ItemRow>(sb, 'custom_items')]);
-      store.mergeRemote(entries.map(toEntry), items.map(toItem));
+      const [entries, items, records] = await Promise.all([pullAll<EntryRow>(sb, 'entries'), pullAll<ItemRow>(sb, 'custom_items'), pullAll<RecordRow>(sb, 'records')]);
+      store.mergeRemote(entries.map(toEntry), items.map(toItem), records.map(toRecord));
       await flush();
     } catch (err) {
       setError((err as Error).message || 'Could not load the shared register.');
@@ -83,6 +90,7 @@ function startEngine(sb: SupabaseClient, setStatus: (s: SyncStatus) => void, set
   channel = sb.channel('register')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, p => { if (p.new && 'id' in p.new) store.mergeRemote([toEntry(p.new as EntryRow)], []); })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_items' }, p => { if (p.new && 'id' in p.new) store.mergeRemote([], [toItem(p.new as ItemRow)]); })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'records' }, p => { if (p.new && 'id' in p.new) store.mergeRemote([], [], [toRecord(p.new as RecordRow)]); })
     .subscribe(s => { if (s === 'SUBSCRIBED') pull(); });
 
   const kick = () => { window.clearTimeout(timer); timer = window.setTimeout(flush, 250); };

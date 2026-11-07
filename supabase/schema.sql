@@ -46,10 +46,20 @@ create table if not exists public.custom_items (
   deleted boolean not null default false
 );
 
+-- 3b. Loans and commitments (insurance, fees, …) for the Statements screen.
+create table if not exists public.records (
+  id text primary key,
+  kind text not null check (kind in ('loan', 'commitment')),
+  data jsonb not null,
+  updated_at bigint not null,
+  deleted boolean not null default false
+);
+
 -- 4. Row-level security: only listed members can read or write.
 alter table public.members enable row level security;
 alter table public.entries enable row level security;
 alter table public.custom_items enable row level security;
+alter table public.records enable row level security;
 
 drop policy if exists "members see own row" on public.members;
 create policy "members see own row" on public.members
@@ -68,6 +78,13 @@ drop policy if exists "members add items" on public.custom_items;
 create policy "members add items" on public.custom_items for insert to authenticated with check ((select private.is_member()));
 drop policy if exists "members change items" on public.custom_items;
 create policy "members change items" on public.custom_items for update to authenticated using ((select private.is_member())) with check ((select private.is_member()));
+
+drop policy if exists "members read records" on public.records;
+create policy "members read records" on public.records for select to authenticated using ((select private.is_member()));
+drop policy if exists "members add records" on public.records;
+create policy "members add records" on public.records for insert to authenticated with check ((select private.is_member()));
+drop policy if exists "members change records" on public.records;
+create policy "members change records" on public.records for update to authenticated using ((select private.is_member())) with check ((select private.is_member()));
 
 -- The author is always set by the database: the signed-in user on insert,
 -- and kept unchanged when someone else edits the entry.
@@ -95,6 +112,9 @@ begin
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'custom_items') then
     alter publication supabase_realtime add table public.custom_items;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'records') then
+    alter publication supabase_realtime add table public.records;
   end if;
 end $$;
 
