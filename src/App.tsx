@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { Register } from './Register';
+import { Receivables } from './Receivables';
 import { Statements } from './Statements';
 import { supabase, useSync, type SyncStatus } from './sync';
 
@@ -15,14 +16,14 @@ const STATUS_TEXT: Record<SyncStatus, string> = {
   error: 'Sync problem — retrying',
 };
 
-type View = 'register' | 'statements';
+type View = 'register' | 'receive' | 'statements';
 const VIEW_KEY = 'wealthwise_view';
 
 function Nav({ view, setView }: { view: View; setView: (v: View) => void }) {
   return (
-    <nav className="seg" aria-label="Sections" style={{ display: 'flex', maxWidth: 420 }}>
-      {([['register', 'Register'], ['statements', 'Statements']] as const).map(([v, t]) => (
-        <label key={v} className="seg-opt" style={{ flex: '1 1 0', justifyContent: 'center', minHeight: 44, fontSize: 15 }}>
+    <nav className="seg" aria-label="Sections" style={{ display: 'flex', maxWidth: 520 }}>
+      {([['register', 'Register'], ['receive', 'To receive'], ['statements', 'Statements']] as const).map(([v, t]) => (
+        <label key={v} className="seg-opt" style={{ flex: '1 1 0', justifyContent: 'center', textAlign: 'center', minHeight: 44, fontSize: 15, padding: '7px 6px' }}>
           <input type="radio" name="view" checked={view === v} onChange={() => { setView(v); window.scrollTo({ top: 0 }); }} />{t}
         </label>
       ))}
@@ -31,10 +32,13 @@ function Nav({ view, setView }: { view: View; setView: (v: View) => void }) {
 }
 
 function Screens({ footer, shared }: { footer: ReactNode; shared: boolean }) {
-  const [view, setViewState] = useState<View>(() => { try { return localStorage.getItem(VIEW_KEY) === 'statements' ? 'statements' : 'register'; } catch { return 'register'; } });
+  const [view, setViewState] = useState<View>(() => { try { const v = localStorage.getItem(VIEW_KEY); return v === 'statements' || v === 'receive' ? v : 'register'; } catch { return 'register'; } });
   const setView = (v: View) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* ignore */ } };
   const nav = <Nav view={view} setView={setView} />;
-  return view === 'statements' ? <Statements nav={nav} footer={footer} /> : <Register nav={nav} footer={footer} shared={shared} />;
+  const openReceive = () => { setView('receive'); window.scrollTo({ top: 0 }); };
+  if (view === 'statements') return <Statements nav={nav} footer={footer} onOpenReceive={openReceive} />;
+  if (view === 'receive') return <Receivables nav={nav} footer={footer} />;
+  return <Register nav={nav} footer={footer} shared={shared} onOpenReceive={openReceive} />;
 }
 
 export function App() {

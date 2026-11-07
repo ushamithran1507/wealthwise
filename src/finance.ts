@@ -1,7 +1,7 @@
 // Pure calculations for the Statements screen: loan schedules, commitment due
 // dates and the rule-based cost-cutting suggestions. No UI here.
 import { DEFAULT_CATS, isoDate, money, num } from './shared';
-import type { Commitment, CommitmentKind, Entry, Frequency, Loan, StoredRecord } from './store';
+import type { Commitment, CommitmentKind, Entry, Frequency, Loan, Receivable, ReceivableKind, StoredRecord } from './store';
 
 const addMonths = (iso: string, n: number) => {
   const [y, m, d] = iso.split('-').map(Number);
@@ -63,7 +63,7 @@ export const KIND_LABEL: Record<CommitmentKind | 'loan', string> = { loan: 'Loan
 /** Register category a payment of this kind is recorded under. */
 export const KIND_CATEGORY: Record<CommitmentKind | 'loan', string> = { loan: 'Debt / EMI', insurance: 'Insurance', fees: 'Fees', rent: 'Rent', subscription: 'Bills & utilities', tax: 'Other expense', other: 'Other expense' };
 
-export function dueDates(c: Commitment, from: string, to: string): string[] {
+export function dueDates(c: { frequency: Frequency; firstDue: string; endDate?: string }, from: string, to: string): string[] {
   const step = STEP[c.frequency], out: string[] = [];
   if (!step) return c.firstDue >= from && c.firstDue <= to ? [c.firstDue] : [];
   for (let k = 0; k < 2400; k++) {
@@ -87,13 +87,40 @@ export function duesBetween(records: StoredRecord[], from: string, to: string): 
       const l = r.data as Loan;
       for (const i of schedule(l)) if (i.date >= from && i.date <= to)
         out.push({ key: `pay:${r.id}:${i.date}`, recordId: r.id, date: i.date, name: l.name, kind: 'loan', amount: i.emi, person: l.person, detail: `EMI ${i.n} · interest ${money(i.interest)}` });
-    } else {
+    } else if (r.kind === 'commitment') {
       const c = r.data as Commitment;
       for (const d of dueDates(c, from, to))
         out.push({ key: `pay:${r.id}:${d}`, recordId: r.id, date: d, name: c.name, kind: c.kind, amount: c.amount, person: c.person, detail: (c.reference ? c.reference + ' · ' : '') + FREQ_LABEL[c.frequency] });
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+}
+
+// — money still to come in —
+
+export const RECV_LABEL: Record<ReceivableKind, string> = { rent: 'Rent to collect', claim: 'Insurance / medical claim', refund: 'Refund', lent: 'Money lent / dues', maturity: 'Deposit maturity', other: 'Other' };
+/** Register income category a receipt of this kind is recorded under. */
+export const RECV_CATEGORY: Record<ReceivableKind, string> = { rent: 'Rent received', claim: 'Claims & refunds', refund: 'Claims & refunds', lent: 'Other income', maturity: 'Interest & dividends', other: 'Other income' };
+
+export interface Expected { key: string; recordId: string; date: string; name: string; kind: ReceivableKind; amount: number; from: string; person: string; detail: string }
+
+/** Every expected receipt between two dates, oldest first. Keys are the register entry ids used when marked received. */
+export function expectedBetween(records: StoredRecord[], from: string, to: string): Expected[] {
+  const out: Expected[] = [];
+  for (const r of records) {
+    if (r.kind !== 'receivable') continue;
+    const v = r.data as Receivable;
+    for (const d of dueDates(v, from, to))
+      out.push({ key: `recv:${r.id}:${d}`, recordId: r.id, date: d, name: v.name, kind: v.kind, amount: v.amount, from: v.from, person: v.person, detail: [v.from, v.reference, FREQ_LABEL[v.frequency]].filter(Boolean).join(' · ') });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+}
+
+/** Outstanding receivables up to `upTo` that have no matching receipt in the register. */
+export function stillToReceive(records: StoredRecord[], received: Set<string>, upTo: string, today: string) {
+  const open = expectedBetween(records, '1900-01-01', upTo).filter(x => !received.has(x.key));
+  const overdue = open.filter(x => x.date < today);
+  return { open, overdue, total: open.reduce((a, x) => a + x.amount, 0), overdueTotal: overdue.reduce((a, x) => a + x.amount, 0) };
 }
 
 // — cost-cutting suggestions (rule-based) —

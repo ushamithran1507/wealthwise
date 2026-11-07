@@ -46,10 +46,10 @@ create table if not exists public.custom_items (
   deleted boolean not null default false
 );
 
--- 3b. Loans and commitments (insurance, fees, …) for the Statements screen.
+-- 3b. Loans, commitments (insurance, fees, …) and amounts to receive (rent, claims, refunds).
 create table if not exists public.records (
   id text primary key,
-  kind text not null check (kind in ('loan', 'commitment')),
+  kind text not null check (kind in ('loan', 'commitment', 'receivable')),
   data jsonb not null,
   updated_at bigint not null,
   deleted boolean not null default false

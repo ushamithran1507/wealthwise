@@ -1,6 +1,6 @@
 import { useMemo, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { ColumnChart, Legend, LineChart, SERIES } from './Charts';
-import { FREQ_LABEL, KIND_CATEGORY, KIND_LABEL, calcEmi, duesBetween, fmtCompact, loanEmi, monthlyTotals, outstandingOn, schedule, suggestions, type Due } from './finance';
+import { FREQ_LABEL, KIND_CATEGORY, KIND_LABEL, calcEmi, duesBetween, stillToReceive, fmtCompact, loanEmi, monthlyTotals, outstandingOn, schedule, suggestions, type Due } from './finance';
 import { ACC, CURRENCY, DEFAULT_PEOPLE, NEG, Page, btn, curMonth, dayMonth, fieldCol, figure, h2, input, kicker, label, money, monthName, num, rule, select, shortMonth, td, tdR, th, thR, todayISO } from './shared';
 import { newId, store, type Commitment, type CommitmentKind, type Frequency, type Loan, type StoredRecord } from './store';
 
@@ -32,7 +32,7 @@ const blankLoan = (person: string): LoanForm => ({ name: '', lender: '', princip
 type CommitForm = { name: string; kind: CommitmentKind; amount: string; frequency: Frequency; firstDue: string; endDate: string; reference: string; person: string };
 const blankCommit = (person: string): CommitForm => ({ name: '', kind: 'insurance', amount: '', frequency: 'yearly', firstDue: todayISO(), endDate: '', reference: '', person });
 
-export function Statements({ nav, footer }: { nav: ReactNode; footer: ReactNode }) {
+export function Statements({ nav, footer, onOpenReceive }: { nav: ReactNode; footer: ReactNode; onOpenReceive?: () => void }) {
   const snap = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const today = todayISO(), thisYear = today.slice(0, 4);
   const [year, setYear] = useState(thisYear);
@@ -60,6 +60,8 @@ export function Statements({ nav, footer }: { nav: ReactNode; footer: ReactNode 
   const dues = useMemo(() => duesBetween(snap.records, from, to), [snap.records, from, to]);
   const in30 = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
   const upcoming = duesBetween(snap.records, today, in30).filter(d => !paid.has(d.key));
+  const recv = stillToReceive(snap.records, paid, in30, today);
+  const goingOut = upcoming.reduce((a, d) => a + d.amount, 0);
   const outstanding = loans.reduce((a, l) => a + outstandingOn(l.data, today), 0);
   const emiYear = dues.filter(d => d.kind === 'loan').reduce((a, d) => a + d.amount, 0);
   const insYear = dues.filter(d => d.kind === 'insurance').reduce((a, d) => a + d.amount, 0);
@@ -138,6 +140,8 @@ export function Statements({ nav, footer }: { nav: ReactNode; footer: ReactNode 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={kicker}>EMIs in {year}</span><span style={figure}>{money(emiYear)}</span></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={kicker}>Insurance in {year}</span><span style={figure}>{money(insYear)}</span></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={{ ...kicker, color: upcoming.length ? NEG : undefined }}>Due in 30 days</span><span style={{ ...figure, color: upcoming.length ? NEG : undefined }}>{money(upcoming.reduce((a, d) => a + d.amount, 0))}</span><span style={small}>{upcoming.length ? upcoming.slice(0, 3).map(d => `${d.name} ${dayMonth(d.date)}`).join(' · ') : 'Nothing unpaid'}</span></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={{ ...kicker, color: ACC }}>To receive in 30 days</span><span style={{ ...figure, color: ACC }}>{money(recv.total)}</span><span style={small}>{recv.overdue.length ? <strong style={{ color: NEG }}>{money(recv.overdueTotal)} overdue</strong> : recv.open.length ? recv.open.slice(0, 2).map(x => `${x.name} ${dayMonth(x.date)}`).join(' · ') : 'Nothing pending'}{onOpenReceive && <> · <button className="btn btn-ghost" style={{ fontSize: 14, padding: '0 4px', minHeight: 0 }} onClick={onOpenReceive}>View</button></>}</span></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={kicker}>Next 30 days, net</span><span style={{ ...figure, color: recv.total - goingOut < 0 ? NEG : undefined }}>{money(recv.total - goingOut)}</span><span style={small}>{money(recv.total)} coming in − {money(goingOut)} going out</span></div>
       </section>
 
       {/* — Loans — */}

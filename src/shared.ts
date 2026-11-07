@@ -4,7 +4,7 @@ import type { EType, Entry } from './store';
 
 export const CURRENCY = '₹';
 export const DEFAULT_CATS: Record<EType, string[]> = {
-  income: ['Salary', 'Business', 'Freelance', 'Rent received', 'Interest & dividends', 'Other income'],
+  income: ['Salary', 'Business', 'Freelance', 'Rent received', 'Interest & dividends', 'Claims & refunds', 'Other income'],
   expense: ['Food & groceries', 'Rent', 'Shopping', 'Fees', 'Medical', 'Insurance', 'Debt / EMI', 'Bills & utilities', 'Transport', 'Other expense'],
   investment: ['Savings deposit', 'SIP / mutual fund', 'Fixed deposit', 'PPF / EPF', 'Shares', 'Gold', 'Other investment'],
 };

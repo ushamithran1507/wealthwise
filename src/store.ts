@@ -43,9 +43,15 @@ export interface Commitment {
   name: string; kind: CommitmentKind; amount: number; frequency: Frequency;
   firstDue: string; endDate?: string; reference?: string; person: string;
 }
-export type RecordKind = 'loan' | 'commitment';
+/** Money the family is still expecting: rent to collect, claims, refunds, money lent out. */
+export type ReceivableKind = 'rent' | 'claim' | 'refund' | 'lent' | 'maturity' | 'other';
+export interface Receivable {
+  name: string; kind: ReceivableKind; amount: number; frequency: Frequency;
+  firstDue: string; endDate?: string; from: string; reference?: string; person: string;
+}
+export type RecordKind = 'loan' | 'commitment' | 'receivable';
 export interface StoredRecord {
-  id: string; kind: RecordKind; data: Loan | Commitment; updatedAt: number; deleted?: boolean;
+  id: string; kind: RecordKind; data: Loan | Commitment | Receivable; updatedAt: number; deleted?: boolean;
 }
 
 export type Outbox = { entries: Record<string, Entry>; items: Record<string, CustomItem>; records: Record<string, StoredRecord> };
@@ -70,7 +76,7 @@ function write(key: string, v: unknown) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage full or blocked */ }
 }
 
-type LegacyShape = { entries?: Array<Partial<Entry>>; customCats?: Partial<Record<EType, string[]>>; customPeople?: string[]; loans?: Array<{ id: string } & Loan>; commitments?: Array<{ id: string } & Commitment> };
+type LegacyShape = { entries?: Array<Partial<Entry>>; customCats?: Partial<Record<EType, string[]>>; customPeople?: string[]; loans?: Array<{ id: string } & Loan>; commitments?: Array<{ id: string } & Commitment>; receivables?: Array<{ id: string } & Receivable> };
 
 /** Converts the prototype's / backup file's shape into store rows. */
 export function fromLegacy(d: LegacyShape, stamp = Date.now()): State {
@@ -88,6 +94,7 @@ export function fromLegacy(d: LegacyShape, stamp = Date.now()): State {
   const records: Record<string, StoredRecord> = {};
   for (const { id, ...data } of d.loans || []) if (id) records[id] = { id, kind: 'loan', data: data as Loan, updatedAt: stamp };
   for (const { id, ...data } of d.commitments || []) if (id) records[id] = { id, kind: 'commitment', data: data as Commitment, updatedAt: stamp };
+  for (const { id, ...data } of d.receivables || []) if (id) records[id] = { id, kind: 'receivable', data: data as Receivable, updatedAt: stamp };
   return { entries, items, records };
 }
 
@@ -151,7 +158,7 @@ class RegisterStore {
     if (this.state.items[id] && !this.state.items[id].deleted) return;
     this.stampItem({ id, kind, type, name, updatedAt: 0 }); this.commit();
   }
-  putRecord(id: string, kind: RecordKind, data: Loan | Commitment) { this.stampRecord({ id, kind, data, updatedAt: 0 }); this.commit(); }
+  putRecord(id: string, kind: RecordKind, data: Loan | Commitment | Receivable) { this.stampRecord({ id, kind, data, updatedAt: 0 }); this.commit(); }
   deleteRecord(id: string) { const r = this.state.records[id]; if (r) { this.stampRecord({ ...r, deleted: true }); this.commit(); } }
   hasEntry(id: string) { const e = this.state.entries[id]; return !!e && !e.deleted; }
   /** Replaces everything with the given rows (restore backup / clear all). */
@@ -210,7 +217,8 @@ class RegisterStore {
     const entries = snap.entries.map(({ id, type, amount, date, cat, person, desc, created }) => ({ id, type, amount, date, cat, person, desc, created }));
     const loans = snap.records.filter(r => r.kind === 'loan').map(r => ({ id: r.id, ...r.data }));
     const commitments = snap.records.filter(r => r.kind === 'commitment').map(r => ({ id: r.id, ...r.data }));
-    return { app: 'wealthwise-register', exported: new Date().toISOString(), entries, customCats, customPeople, loans, commitments };
+    const receivables = snap.records.filter(r => r.kind === 'receivable').map(r => ({ id: r.id, ...r.data }));
+    return { app: 'wealthwise-register', exported: new Date().toISOString(), entries, customCats, customPeople, loans, commitments, receivables };
   }
   /** Queues every local row for upload — used the first time a device joins a shared register. */
   queueAllLocal() {

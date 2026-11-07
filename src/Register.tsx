@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ChangeEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { fromLegacy, newId, store, TYPES, type EType, type Entry } from './store';
+import { stillToReceive } from './finance';
 import { ACC, CURRENCY, DEFAULT_CATS, DEFAULT_PEOPLE, NEG, Page, TYPE_LABEL, btn, cell, curMonth, fieldCol, figure, flow, h2, input, kicker, label, money, monthName, num, rule, sub, subR, sumOf, td, tdR, th, thR, todayISO } from './shared';
 
 type Form = { type: EType; amount: string; date: string; cat: string; desc: string; newCat: string; person: string; newPerson: string };
@@ -12,7 +13,7 @@ function download(name: string, blob: Blob) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-export function Register({ footer, nav, shared = false }: { footer: ReactNode; nav?: ReactNode; shared?: boolean }) {
+export function Register({ footer, nav, shared = false, onOpenReceive }: { footer: ReactNode; nav?: ReactNode; shared?: boolean; onOpenReceive?: () => void }) {
   const snap = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [month, setMonth] = useState(curMonth());
   const [form, setForm] = useState<Form>(blankForm());
@@ -52,6 +53,12 @@ export function Register({ footer, nav, shared = false }: { footer: ReactNode; n
     const pe = view.filter(e => e.person === name), by = (t: EType) => sumOf(pe.filter(e => e.type === t));
     return { name, inc: num(by('income')), exp: num(by('expense')), inv: num(by('investment')) };
   });
+
+  const toReceive = useMemo(() => {
+    const ids = new Set(snap.entries.map(e => e.id));
+    const end = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
+    return stillToReceive(snap.records, ids, end, todayISO());
+  }, [snap.entries, snap.records]);
 
   let running = opening;
   const rows = view.map(e => { running += flow(e); return { e, bal: running }; });
@@ -155,6 +162,15 @@ export function Register({ footer, nav, shared = false }: { footer: ReactNode; n
           </div>
         </section>
 
+        {toReceive.open.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 'var(--space-2) var(--space-3)', marginTop: 'calc(-1 * var(--space-3))' }}>
+            <span style={{ ...kicker, color: ACC }}>Yet to receive</span>
+            <span style={{ fontFamily: 'var(--font-heading)', fontSize: 22, fontWeight: 700, color: ACC }}>{money(toReceive.total)}</span>
+            <span style={{ fontSize: 14 }}>{toReceive.open.length} item{toReceive.open.length > 1 ? 's' : ''} due within 30 days{toReceive.overdue.length ? ', ' : ''}{toReceive.overdue.length > 0 && <strong style={{ color: NEG }}>{money(toReceive.overdueTotal)} overdue</strong>}</span>
+            {onOpenReceive && <button className="btn btn-ghost" style={{ ...btn, fontSize: 14 }} onClick={onOpenReceive}>View</button>}
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-8)', alignItems: 'flex-start' }}>
           <form ref={formRef} onSubmit={submit} style={{ flex: '1 1 300px', maxWidth: 440, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             <h2 style={h2}>{editId ? 'Edit entry' : 'Add entry'}</h2>
@@ -255,6 +271,7 @@ export function Register({ footer, nav, shared = false }: { footer: ReactNode; n
             <thead><tr><th style={th}>Item</th><th style={thR}>Amount ({CURRENCY})</th><th style={{ ...thR, width: '22%' }}>% of income</th></tr></thead>
             <tbody>
               <tr><td style={{ ...td, fontWeight: 700 }}>Income received</td><td style={{ ...tdR, fontWeight: 700, color: ACC }}>{num(inc)}</td><td style={tdR}>100%</td></tr>
+              {byCat('income').length > 1 && byCat('income').map(c => <tr key={'n' + c.name}><td style={sub}>{c.name}</td><td style={subR}>{c.amt}</td><td style={subR}>{c.pct}</td></tr>)}
               {byCat('expense').map(c => <tr key={'x' + c.name}><td style={sub}>{c.name}</td><td style={subR}>{c.amt}</td><td style={subR}>{c.pct}</td></tr>)}
               <tr><td style={{ ...td, fontWeight: 700 }}>Total expenses</td><td style={{ ...tdR, fontWeight: 700 }}>{num(exp)}</td><td style={{ ...tdR, fontWeight: 700 }}>{pct(exp)}</td></tr>
               {byCat('investment').map(c => <tr key={'i' + c.name}><td style={sub}>{c.name}</td><td style={subR}>{c.amt}</td><td style={subR}>{c.pct}</td></tr>)}
